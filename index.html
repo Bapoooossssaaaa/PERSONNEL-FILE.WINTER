@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAISA Secure Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+    <!-- jsPDF and html2canvas for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: 'Courier Prime', 'Courier New', Courier, monospace;
+            background-color: #000;
+            color: #FFF;
+            overflow: hidden;
+            cursor: none;
+            background-image: url('https://github.com/Bapoooossssaaaa/SCPFILE/blob/main/Untitled%20video%20-%20Made%20with%20Clipchamp.gif?raw=true');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        /* Scanlines effect */
+        body::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.4),
+                rgba(0, 0, 0, 0.4) 1px,
+                transparent 1px,
+                transparent 3px
+            );
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.8;
+        }
+
+        /* Terminal text flicker/glow effect */
+        .terminal-text {
+            text-shadow: 0 0 1px #c8c8c8;
+        }
+        
+        /* Custom cursor */
+        .custom-cursor {
+            position: fixed;
+            width: 10px;
+            height: 18px;
+            background-color: #fff;
+            box-shadow: 0 0 5px #fff, 0 0 10px #fff;
+            mix-blend-mode: difference;
+            pointer-events: none;
+            z-index: 10000;
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+         ::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #718096;
+        }
+
+        
+        /* General styling for interactive elements */
+        .interactive-button {
+            transition: all 0.2s ease-in-out;
+        }
+        .interactive-button:hover:not(:disabled) {
+            transform: scale(1.05);
+            text-shadow: 0 0 8px currentColor;
+        }
+        .file-list-item:hover {
+             background-color: #4a5568;
+        }
+
+        #memetic-agent img {
+            border: 2px solid white;
+            box-shadow: 0 0 15px white;
+        }
+        
+        /* Personnel File Specific Styles */
+        .highlight-text {
+             @apply text-cyan-300;
+        }
+        .section-title {
+            @apply text-yellow-400 text-lg border-b-2 border-gray-600 pb-2 mb-3 mt-4 font-bold;
+        }
+        .info-grid {
+             @apply grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2;
+        }
+        .info-item strong {
+            @apply text-gray-400;
+        }
+        .tab-button.active {
+            @apply text-yellow-400 border-yellow-400;
+        }
+
+        /* Remote Access Loader */
+        #remote-access-screen .computer-icon {
+            width: 80px;
+            height: 80px;
+            stroke: #fff;
+            stroke-width: 1;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="w-screen h-screen">
+
+    <div class="custom-cursor" id="custom-cursor"></div>
+    <!-- Darkening Overlay -->
+    <div class="fixed inset-0 bg-black bg-opacity-20 z-[-1]"></div>
+
+    <!-- Remote Access Screen -->
+    <div id="remote-access-screen" class="flex flex-col items-center justify-center p-8 h-full w-full fixed inset-0 bg-black z-50 text-white">
+        <svg class="computer-icon mb-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 21H17M12 17V21M3 12C3 4.58172 4.58172 3 12 3C19.4183 3 21 4.58172 21 12M4 17H20M5 14H7M9 14H11" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p id="remote-status" class="text-lg mb-4">Establishing Secure Connection...</p>
+        <div class="w-1/2 max-w-sm bg-gray-700 border border-white h-4">
+            <div id="remote-progress-bar" class="bg-white h-full" style="width: 0%;"></div>
+        </div>
+    </div>
+
+
+    <!-- BIOS Startup Screen -->
+    <div id="bios-screen" class="hidden flex-col items-start justify-start p-8 h-full w-full fixed inset-0 bg-black z-40 text-white">
+        <p class="terminal-text text-lg">Powered by SCiPNET</p>
+        <div id="bios-text" class="mt-8 text-sm w-full">
+            <!-- BIOS loading text will appear here -->
+        </div>
+    </div>
+    
+    <!-- Error Popup -->
+    <div id="error-popup" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+        <div class="bg-gray-800 border-2 border-red-500 p-8 rounded-lg shadow-xl text-center">
+            <h2 class="text-2xl text-red-500 mb-4">NETWORK ERROR</h2>
+            <p id="error-message" class="text-lg">Network Unavailable</p>
+        </div>
+    </div>
+    
+    <!-- Login Popup -->
+    <div id="login-popup" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+        <div class="bg-gray-900 border-2 border-yellow-500 p-8 rounded-lg shadow-xl text-left w-full max-w-md">
+            <h2 class="text-xl text-yellow-500 mb-4">RAISA AUTHENTICATION REQUIRED</h2>
+            <p>Please enter your Designated RAISA Clearance Code:</p>
+            <div class="bg-black p-2 mt-2 h-8">
+                <span id="login-code"></span><span class="animate-ping">_</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Memetic Kill Agent -->
+    <div id="memetic-agent" class="fixed inset-0 bg-black flex items-center justify-center z-[70] opacity-0 transition-opacity duration-1000 pointer-events-none">
+        <img src="https://github.com/Bapoooossssaaaa/SCPFILE/blob/main/assets_task_01k7n8gyf7f7nrqynthtchbceh_1760576470_img_0.webp?raw=true" alt="MEMETIC KILL AGENT ACTIVATED" class="max-w-full max-h-full object-contain">
+    </div>
+
+    <!-- Main Terminal Interface -->
+    <div id="main-terminal" class="hidden h-full flex flex-col">
+        <!-- Top Bar -->
+        <div class="w-full bg-gray-700 bg-opacity-80 p-2 text-gray-200 flex items-center flex-shrink-0" style="border-bottom: 2px solid rgba(255, 255, 255, 0.7);">
+            <img src="https://github.com/Bapoooossssaaaa/SCPFILE/blob/main/Logo_SCP_Foundation-removebg-preview.png?raw=true" alt="SCP Logo" class="h-8 w-8 mr-4">
+            <span class="mr-6">ID: RAISA-TERM-S45-03</span>
+            <span class="mr-6">LOCATION: Site-45</span>
+            <span id="timestamp"></span>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-grow overflow-hidden" id="terminal-content-wrapper">
+            <div class="p-4 h-full overflow-y-auto" id="terminal-content">
+                 <!-- Content will be injected here by JavaScript -->
+            </div>
+
+            <!-- Archive Screen Content -->
+            <div id="archive-screen" class="hidden h-full flex flex-col">
+                 <!-- Pending Review Bar -->
+                <div id="pending-review-bar" class="bg-black p-2 flex-shrink-0 border-b-2 border-yellow-400">
+                    <p class="text-yellow-400 text-center">1 File pending review… <a href="#" id="review-button" class="bg-yellow-400 text-black px-2 py-1 interactive-button">[REVIEW]</a></p>
+                </div>
+                <!-- File Columns Wrapper -->
+                <div class="flex-grow flex flex-col overflow-hidden bg-gray-900 bg-opacity-50">
+                    <!-- File List Container -->
+                    <div id="file-list-container" class="w-full h-full p-4 overflow-y-auto">
+                        <div class="bg-gray-700 p-2 font-bold mb-4">Archived Personnel Files</div>
+                        <div id="file-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_101-A.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_199-D.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_217-C.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600" data-file-id="winters">Personnel_File_301-C.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_458-B.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_505-A.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_682-R.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_788-D.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_882-F.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_893-A.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_932-A.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_939-EXP.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_1045-C.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_1556-E.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_1984-A.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_2011-B.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_2109-B.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_2521-INFO.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_3001-H.log</p>
+                            <p class="p-2 cursor-pointer file-list-item border border-gray-600">Personnel_File_4000-ARC.log</p>
+                        </div>
+                    </div>
+                    <!-- File Content Container -->
+                    <div id="file-content-view" class="w-full h-full overflow-y-auto bg-black bg-opacity-30 hidden">
+                        <!-- File content will be displayed here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const { jsPDF } = window.jspdf;
+            // Element Cache
+            const remoteAccessScreen = document.getElementById('remote-access-screen');
+            const remoteProgressBar = document.getElementById('remote-progress-bar');
+            const remoteStatus = document.getElementById('remote-status');
+            const biosScreen = document.getElementById('bios-screen');
+            const biosText = document.getElementById('bios-text');
+            const mainTerminal = document.getElementById('main-terminal');
+            const terminalContent = document.getElementById('terminal-content');
+            const archiveScreen = document.getElementById('archive-screen');
+            const customCursor = document.getElementById('custom-cursor');
+            const errorPopup = document.getElementById('error-popup');
+            const errorMessage = document.getElementById('error-message');
+            const loginPopup = document.getElementById('login-popup');
+            const loginCode = document.getElementById('login-code');
+            const fileListContainer = document.getElementById('file-list-container');
+            const fileListView = document.getElementById('file-list');
+            const fileContentView = document.getElementById('file-content-view');
+            const reviewButton = document.getElementById('review-button');
+            const pendingReviewBar = document.getElementById('pending-review-bar');
+
+            // --- Review Button Handler ---
+            reviewButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Find the winters file and trigger a click
+                document.querySelector('[data-file-id="winters"]')?.click();
+            });
+
+            // --- Custom Cursor ---
+            document.addEventListener('mousemove', e => {
+                customCursor.style.left = e.clientX + 'px';
+                customCursor.style.top = e.clientY + 'px';
+            });
+            document.addEventListener('mousedown', () => customCursor.style.transform = 'scale(0.8)');
+            document.addEventListener('mouseup', () => customCursor.style.transform = 'scale(1)');
+
+            // --- Timestamp ---
+            const timestampEl = document.getElementById('timestamp');
+            function updateTimestamp() {
+                const now = new Date();
+                timestampEl.textContent = `TIMESTAMP: ${now.toUTCString()}`;
+            }
+            setInterval(updateTimestamp, 1000);
+            updateTimestamp();
+
+            // --- Typewriter Effect ---
+            function typeWriter(element, text, speed, callback) {
+                let i = 0;
+                element.innerHTML = '';
+                function type() {
+                    if (i < text.length) {
+                        element.innerHTML += text.charAt(i);
+                        i++;
+                        setTimeout(type, speed);
+                    } else if (callback) {
+                        callback();
+                    }
+                }
+                type();
+            }
+            
+            // --- File Content Templates ---
+            const fileTemplates = {
+                winters: `
+                    <div class="p-4">
+                        <div class="flex justify-between items-start mb-4">
+                             <h2 class="text-2xl text-yellow-300">PERSONNEL FILE: WINTERS, ANABELLA</h2>
+                             <div class="flex-shrink-0 ml-4">
+                                <button id="back-to-files" class="text-yellow-400 interactive-button mb-2 text-sm block">[<-- Back to Archive]</button>
+                                <button id="download-pdf" class="bg-blue-500 text-white px-2 py-1 interactive-button text-sm block w-full">[Download as PDF]</button>
+                             </div>
+                        </div>
+
+                        <div id="pdf-content" class="text-sm">
+                             <!-- TAB NAVIGATION -->
+                            <div class="flex border-b border-gray-600 mb-4 flex-wrap">
+                                <button class="tab-button px-4 py-2 text-gray-400 border-b-2 border-transparent hover:text-white active" data-tab="service-record">Service Record</button>
+                                <button class="tab-button px-4 py-2 text-gray-400 border-b-2 border-transparent hover:text-white" data-tab="backstory">Backstory</button>
+                                <button class="tab-button px-4 py-2 text-gray-400 border-b-2 border-transparent hover:text-white" data-tab="timeline">Timeline</button>
+                                <button class="tab-button px-4 py-2 text-gray-400 border-b-2 border-transparent hover:text-white" data-tab="doc-briefing">DoC Briefing</button>
+                                <button class="tab-button px-4 py-2 text-gray-400 border-b-2 border-transparent hover:text-white" data-tab="raisa-addendum">RAISA Addendum</button>
+                                <button class="tab-button px-4 py-2 text-gray-400 border-b-2 border-transparent hover:text-white" data-tab="abilities">Abilities</button>
+                                <button class="tab-button px-4 py-2 text-gray-400 border-b-2 border-transparent hover:text-white" data-tab="morph">Morph</button>
+                            </div>
+
+                            <!-- TAB CONTENT -->
+                            <div id="service-record" class="tab-pane">
+                                <!-- SECTION 1: BIO & SERVICE -->
+                                <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+                                    <div class="md:col-span-3">
+                                        <h3 class="section-title">Biographical & Service Data</h3>
+                                        <div class="info-grid">
+                                            <div class="info-item"><strong>Name:</strong> <span class="highlight-text">Anabella Winters</span></div>
+                                            <div class="info-item"><strong>Current Assignment:</strong> <span class="highlight-text">Acting Director, DoC</span></div>
+                                            <div class="info-item"><strong>Date of Birth:</strong> <span class="highlight-text">May 21, 1981</span></div>
+                                            <div class="info-item"><strong>Security Clearance:</strong> <span class="highlight-text">Level 4</span></div>
+                                            <div class="info-item"><strong>Age:</strong> <span class="highlight-text">44</span></div>
+                                            <div class="info-item"><strong>Date of Recruitment:</strong> <span class="highlight-text">July 17, 2006</span></div>
+                                            <div class="info-item"><strong>Place of Birth:</strong> <span class="highlight-text">Platteville, WI, USA</span></div>
+                                            <div class="info-item"><strong>Parents:</strong> <span class="highlight-text">Jane Winters & Michael Winters</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="md:col-span-2 flex flex-col items-center">
+                                        <div class="border-2 border-gray-500 p-1 mb-4 w-48 h-48">
+                                            <img src="https://github.com/Bapoooossssaaaa/SCPFILE/blob/main/Screenshot%202025-10-16%20211023.png?raw=true" alt="Personnel Portrait" class="w-full h-full object-cover">
+                                        </div>
+                                    </div>
+                                </div>
+                                <h3 class="section-title">Career Progression & Commendations</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <h4 class="text-lg text-yellow-400 mb-2">Progression</h4>
+                                        <ul class="list-disc list-inside space-y-1">
+                                            <li><span class="highlight-text">2006 - 2010:</span> Administrative Intern, Level 1, Site-34</li>
+                                            <li><span class="highlight-text">2010 - 2025:</span> Transferred to DoC. Roles included Analyst, Head Analyst, Supervisor, Operations Director, Assistant Director.</li>
+                                            <li><span class="highlight-text">Present:</span> Acting Director, DoC</li>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-lg text-yellow-400 mb-2">Notable Accomplishments</h4>
+                                        <ul class="list-disc list-inside space-y-1">
+                                            <li>Mitigated 13 data breaches.</li>
+                                            <li>Authorized/supervised amnestic treatment for 271 individuals.</li>
+                                            <li>Aided in detainment of 79 rogue personnel/GoI members.</li>
+                                            <li>Participated in cover-up operations for Incident IR-4001.</li>
+                                            <li>Commended and recommended for L4 by Director Hansley.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="backstory" class="tab-pane hidden">
+                                <h3 class="section-title">Personnel Backstory</h3>
+                                <p class="text-gray-300 leading-relaxed">
+                                    Subject “Anabella Winters,” codenamed <span class="highlight-text">“WINTER,”</span> was born on <span class="highlight-text">May 21, 1981,</span> to Jane and Michael Winters in a middle-class household in Platteville, WI, USA. Growing up in Wisconsin, her parents were stern, trying to keep her as educated as possible. She surpassed her parents' expectations, graduating at or near the top of her class every year. After graduating high school in 1999, she attended <span class="highlight-text">Michigan State University</span>, graduating three years later in 2002 with a Bachelor's in Human Resources, as she enjoyed the thought of management positions. After college, she stayed in Michigan and scored an Administrative Intern position at <span class="highlight-text">Maplewood Primary Care</span>, where she worked from 2002 to 2005 before being laid off after Maplewood went bankrupt.
+                                    <br/><br/>
+                                    Afterward, she experienced major issues with employment despite her best efforts and application crafting, applying to over 20 jobs within a year with no reply. Her 21st application, on <span class="text-yellow-400">July 17, 2006,</span> happened to be to a Foundation front company labeled "Fidelity Management Solutions." A Foundation recruiting official noted her skills were "more than necessary" and flagged her file due to the unusual number of rejections from civilian organizations despite a strong resume and her resilience to continue despite widespread rejection. Thus, she was hired and given a <span class="highlight-text">Level-1 Clearance</span> and an Administrative Intern Position at Foundation <span class="highlight-text">Site-34,</span> where she worked for four years assisting with Foundation Files, personnel onboarding, and documents related to her clearance level.
+                                    <br/><br/>
+                                    In 2010, four years after her service at Site-34’s Administrative Department, she was transferred to the <span class="text-yellow-400">Department of Censorship</span>, a Sub-Department of <span class="text-yellow-400">RAISA</span> at the time, at the request of <span class="highlight-text">Dr. Samuel Hansley,</span> the Sub-Department Director. He made the request after reading over DoC files she had helped with at Site-34. Granted, she would not remember her work, as RAISA wiped her knowledge of said files after she worked on each one to maintain informational security. A RAISA Agent interviewed her after explaining the nature of the work. She was given a "red pill, blue pill" scenario: she could join RAISA, or she could decline, and all her knowledge of the conversation would be wiped. Anabella, being a curious person, accepted the offer and joined the Sub-Department.
+                                    <br/><br/>
+                                    During her 15-year tenure, she mitigated <span class="highlight-text">13 data breaches,</span> authorized/supervised the treatment of <span class="highlight-text">271 individuals</span> with amnestics, aided in the detainment of <span class="highlight-text">79 rogue personnel/GoI members,</span> and participated in the cover-up operations related to <span class="text-red-500">Incident IR-4001,</span> designated <span class="text-red-500">LEETHE PROTOCOL</span>, following the loss of an estimated ████████ individuals. Subsequently, she was formally recommended for <span class="highlight-text">Level 4 clearance</span> and promotion to <span class="highlight-text">Acting Director</span> by Director Hansley. This occurred after Director Hansley had to tend to sensitive post-incident affairs at his home site, <span class="highlight-text">Site-08,</span> and couldn't fulfill his directorial position as requested at <span class="highlight-text">Site-45.</span>
+                                </p>
+                            </div>
+                            
+                            <div id="timeline" class="tab-pane hidden">
+                                <h3 class="section-title">Career Timeline</h3>
+                                <div class="relative border-l-2 border-gray-600 pl-6 space-y-6">
+                                    <div class="relative">
+                                        <div class="absolute -left-[35px] top-1 h-4 w-4 rounded-full bg-yellow-400"></div>
+                                        <p class="font-bold">May 21, 1981</p>
+                                        <p class="text-gray-300">Born in Platteville, Wisconsin.</p>
+                                    </div>
+                                    <div class="relative">
+                                        <div class="absolute -left-[35px] top-1 h-4 w-4 rounded-full bg-cyan-300"></div>
+                                        <p class="font-bold">2002</p>
+                                        <p class="text-gray-300">Graduates from Michigan State University. Begins internship at Maplewood Primary Care.</p>
+                                    </div>
+                                    <div class="relative">
+                                        <div class="absolute -left-[35px] top-1 h-4 w-4 rounded-full bg-cyan-300"></div>
+                                        <p class="font-bold">July 17, 2006</p>
+                                        <p class="text-gray-300">Recruited into the Foundation. Assigned as Administrative Intern (L1) at Site-34.</p>
+                                    </div>
+                                    <div class="relative">
+                                        <div class="absolute -left-[35px] top-1 h-4 w-4 rounded-full bg-cyan-300"></div>
+                                        <p class="font-bold">2010</p>
+                                        <p class="text-gray-300">Transferred to the Department of Censorship at the request of Director Samuel Hansley.</p>
+                                    </div>
+                                     <div class="relative">
+                                        <div class="absolute -left-[35px] top-1 h-4 w-4 rounded-full bg-red-500"></div>
+                                        <p class="font-bold">[REDACTED]</p>
+                                        <p class="text-gray-300">Participated in information suppression for Incident IR-4001 (Leethe Protocol).</p>
+                                    </div>
+                                    <div class="relative">
+                                        <div class="absolute -left-[35px] top-1 h-4 w-4 rounded-full bg-yellow-400"></div>
+                                        <p class="font-bold">2025</p>
+                                        <p class="text-gray-300">Promoted to Acting Director of the DoC and assigned to Site-45.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="doc-briefing" class="tab-pane hidden">
+                                <div class="flex mt-4 items-start">
+                                    <div class="flex-grow">
+                                        <h3 class="section-title">Departmental Briefing: Department of Censorship (DoC)</h3>
+                                        <p class="mb-2">Originally a sub-division of RAISA, the DoC was granted independence in 2011 for a more specialized, proactive approach to information control.</p>
+                                        <p><strong>Primary Directive:</strong> The active censorship of sensitive Foundation information from public access and the management of internal information classification.</p>
+                                    </div>
+                                    <img src="https://github.com/Bapoooossssaaaa/SCPFILE/blob/main/BUREAU%20OF%20(8).png?raw=true" alt="DoC Logo" class="h-24 w-24 ml-6 flex-shrink-0">
+                                </div>
+                            </div>
+
+                            <div id="raisa-addendum" class="tab-pane hidden">
+                                <div class="mt-4 border-2 border-red-500 p-3">
+                                    <h3 class="text-xl text-red-500 font-bold">RAISA PERSONNEL RECORD ADDENDUM</h3>
+                                    <p><strong>DOCUMENT ID:</strong> 774-WINTERS-PFH / <strong>CLASSIFICATION:</strong> LEVEL 2/WINTERS (Restricted)</p>
+                                    <p class="mt-2"><strong>Period of Interest (2005-2006):</strong> Subject experienced a 12-month period of deep professional disengagement. Over 20 relevant job applications were rejected without substantial cause.</p>
+                                    <p class="mt-2"><strong>Recruitment Analysis:</strong> Application flagged by analysis software; statistical probability of continuous unemployment was improbable. Recruitment officer concluded this period of rejection was due to qualities sought in Foundation candidates.</p>
+                                </div>
+                            </div>
+                            
+                            <div id="abilities" class="tab-pane hidden">
+                                <h3 class="section-title">Authorized Abilities</h3>
+                                <ul class="list-disc list-inside space-y-2">
+                                    <li>Administer Amnestics.</li>
+                                    <li>“Silence” any Personnel, Civilian, or any other affiliation by any means necessary if they pose a risk to Foundation’s Secrecy or Informational Security.</li>
+                                    <li>Conduct Cover-up Operations.</li>
+                                </ul>
+                                <p class="mt-4 border-t border-gray-600 pt-2 text-gray-400">All logs of actions shall be logged in the DoC Database.</p>
+                            </div>
+
+                            <div id="morph" class="tab-pane hidden">
+                                <h3 class="section-title">Appearance & Loadout Configuration (Morph)</h3>
+                                <pre class="bg-gray-800 p-4 whitespace-pre-wrap text-sm"><code>permshirt WaltBo215   90843398768614 7272536264
+permhat WaltBo215 14446812689,14354888567,12994246892,95868078367137,11922435004,16244037376,13207311986
+permntag WaltBo215   &lt;font face="Sarpanch"&gt;Anabella W. &lt;/font&gt;
+permrtag WaltBo215   &lt;font face="Sarpanch"&gt;[ Department of Censorship ] |:| Level - IV Clearance &lt;br /&gt; [Assistant/Acting Director] |:| [[WLOC]]&lt;/font&gt;
+permcntag WaltBo215    92 42 42
+permcrtag WaltBo215   128 53 53
+permmaxhealth WaltBo215   130
+Heal WaltBo215
+startergear WaltBo215  M9,clipboard,authorize,detain,L4
+startergear WaltBo215 medkit black 5</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                default: `
+                    <div class="p-4">
+                        <button id="back-to-files" class="text-yellow-400 interactive-button mb-4">[<-- Back to File Archive]</button>
+                        <h3 class="text-xl text-yellow-300 mb-2">FILE CORRUPTED</h3>
+                        <p class="text-gray-400 mb-2">CLASSIFICATION: LEVEL 4 (SECRET)</p>
+                        <p>----------------------------------------</p>
+                        <p class="mt-2">FILE DATA CORRUPTED OR REDACTED BY O5-COUNCIL DIRECTIVE.</p>
+                        <p class="mt-4">ATTEMPTING TO RETRIEVE FRAGMENTS...</p>
+                        <p class="text-red-500 mt-2">...ACCESS DENIED.</p>
+                        <p class="mt-4">REASON: INSUFFICIENT CLEARANCE.</p>
+                        <p class="mt-2">MEMETIC HAZARD DETECTED IN FRAGMENT 003. PURGING...</p>
+                    </div>
+                `
+            };
+            
+             // --- File Click Handler ---
+            const fileItems = fileListView.querySelectorAll('.file-list-item');
+            fileItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    const fileId = item.dataset.fileId || 'default';
+                    fileListContainer.classList.add('hidden');
+                    fileContentView.classList.remove('hidden');
+                    pendingReviewBar.style.display = 'none'; // Hide review bar
+                    fileContentView.innerHTML = '';
+
+                    const loading = document.createElement('p');
+                    loading.className = 'p-4';
+                    loading.textContent = `Accessing ${item.textContent}...`;
+                    fileContentView.appendChild(loading);
+
+                    setTimeout(() => {
+                        fileContentView.innerHTML = fileTemplates[fileId];
+                        
+                        document.getElementById('back-to-files').addEventListener('click', () => {
+                            fileContentView.classList.add('hidden');
+                            fileListContainer.classList.remove('hidden');
+                            pendingReviewBar.style.display = 'block'; // Show review bar
+                        });
+                        
+                        if (fileId === 'winters') {
+                            // --- Tab Switching Logic ---
+                            const tabButtons = fileContentView.querySelectorAll('.tab-button');
+                            const tabPanes = fileContentView.querySelectorAll('.tab-pane');
+                            tabButtons.forEach(button => {
+                                button.addEventListener('click', () => {
+                                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                                    tabPanes.forEach(pane => pane.classList.add('hidden'));
+                                    button.classList.add('active');
+                                    const tabId = button.dataset.tab;
+                                    fileContentView.querySelector(`#${tabId}`).classList.remove('hidden');
+                                });
+                            });
+
+                             // --- PDF Download Logic ---
+                            document.getElementById('download-pdf').addEventListener('click', () => {
+                                const originalContent = document.getElementById('pdf-content');
+                                const contentToPrint = document.createElement('div');
+
+                                // --- Create a printable version of the content ---
+                                const mainTitle = document.createElement('h1');
+                                mainTitle.textContent = "PERSONNEL FILE: WINTERS, ANABELLA";
+                                mainTitle.style.fontSize = '24px';
+                                mainTitle.style.fontWeight = 'bold';
+                                mainTitle.style.marginBottom = '20px';
+                                contentToPrint.appendChild(mainTitle);
+
+                                const tabButtons = originalContent.querySelectorAll('.tab-button');
+                                tabButtons.forEach(button => {
+                                    const tabId = button.dataset.tab;
+                                    const tabPaneClone = originalContent.querySelector(`#${tabId}`).cloneNode(true);
+                                    
+                                    // *** FIX: Ensure the cloned tab content is visible ***
+                                    tabPaneClone.classList.remove('hidden');
+                                    
+                                    const sectionTitle = document.createElement('h2');
+                                    sectionTitle.textContent = button.textContent;
+                                    sectionTitle.style.fontSize = '18px';
+                                    sectionTitle.style.fontWeight = 'bold';
+                                    sectionTitle.style.marginTop = '30px';
+                                    sectionTitle.style.marginBottom = '15px';
+                                    sectionTitle.style.borderBottom = '1px solid #ccc';
+                                    sectionTitle.style.paddingBottom = '5px';
+                                    sectionTitle.style.pageBreakBefore = 'always';
+
+                                    contentToPrint.appendChild(sectionTitle);
+                                    contentToPrint.appendChild(tabPaneClone);
+                                });
+
+                                // --- Prepare the temporary element for rendering ---
+                                const printWrapper = document.createElement('div');
+                                printWrapper.id = "pdf-content-clone";
+                                printWrapper.style.backgroundColor = 'white';
+                                printWrapper.style.color = 'black';
+                                printWrapper.style.width = '1200px'; // Use a fixed wide width for better layout
+                                printWrapper.style.padding = '40px';
+                                printWrapper.style.fontFamily = "'Courier New', Courier, monospace";
+
+                                // Apply styles to the cloned content for the white document look
+                                contentToPrint.querySelectorAll('*').forEach(el => {
+                                    el.style.color = 'black';
+                                });
+                                contentToPrint.querySelectorAll('.highlight-text').forEach(el => el.style.color = '#333');
+                                contentToPrint.querySelectorAll('.bg-gray-800, .bg-gray-700').forEach(el => {
+                                    el.style.backgroundColor = '#f0f0f0';
+                                    el.style.border = '1px solid #ddd';
+                                });
+                                contentToPrint.querySelectorAll('[class*="border-"]').forEach(el => el.style.borderColor = '#ccc');
+                                contentToPrint.querySelector('pre')?.style.setProperty('background-color', '#eef', 'important');
+
+                                printWrapper.appendChild(contentToPrint);
+                                printWrapper.style.position = 'absolute';
+                                printWrapper.style.left = '-9999px'; // Render off-screen
+                                document.body.appendChild(printWrapper);
+
+                                html2canvas(printWrapper, { scale: 2 }).then(canvas => {
+                                    document.body.removeChild(printWrapper); // Clean up
+                                    const imgData = canvas.toDataURL('image/png');
+                                    const pdf = new jsPDF('p', 'mm', 'a4');
+                                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                                    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                                    pdf.save("Personnel_File_Winters_Anabella.pdf");
+                                });
+                            });
+                        }
+                    }, 1000);
+                });
+            });
+
+            // --- Remote Access Sequence ---
+            function startRemoteAccessSequence() {
+                let progress = 0;
+                const interval = setInterval(() => {
+                    progress += 1;
+                    remoteProgressBar.style.width = `${progress}%`;
+
+                    if (progress >= 30 && progress < 60) {
+                        remoteStatus.textContent = "Checking for permission...";
+                    } else if (progress >= 60 && progress < 90) {
+                        remoteStatus.textContent = "Permission granted.";
+                    } else if (progress >= 90) {
+                        remoteStatus.textContent = "Loading Terminal...";
+                    }
+
+                    if (progress >= 100) {
+                        clearInterval(interval);
+                        setTimeout(() => {
+                            remoteAccessScreen.style.opacity = '0';
+                            remoteAccessScreen.style.transition = 'opacity 0.5s ease-out';
+                            setTimeout(() => {
+                                remoteAccessScreen.style.display = 'none';
+                                biosScreen.classList.remove('hidden');
+                                biosScreen.classList.add('flex');
+                                startBiosSequence();
+                            }, 500);
+                        }, 500);
+                    }
+                }, 40);
+            }
+
+            // --- BIOS Sequence ---
+            function startBiosSequence() {
+                const lines = [
+                    "SCiPNET BIOS v4.5.2", "Copyright (c) 1982-2025, SCiPNet Consolidated.", " ", "Main Processor: 2x Foundation-grade Quantum Entanglement Core @ 8.2 THz", "Memory Testing: 1024 ZB OK", " ", "Initializing RAISA Secure Handshake Protocol...", "Checking NVRAM...", "Detecting Primary Master... SCP-DB-OMEGA", "Detecting Primary Slave... None", "Detecting Secondary Master... REDACTED", "Detecting Secondary Slave... None", " ", "Cognitohazard Filters Engaged.", "Memetic Kill Agent Shielding Active.", "Loading RAISA OS from Secure Sector...",
+                ];
+                let lineIndex = 0;
+
+                function displayNextLine() {
+                    if (lineIndex < lines.length) {
+                        const p = document.createElement('p');
+                        biosText.appendChild(p);
+                        typeWriter(p, lines[lineIndex], 20, displayNextLine);
+                        lineIndex++;
+                    } else {
+                        startLoadingBar();
+                    }
+                }
+                
+                function startLoadingBar() {
+                    const p = document.createElement('p');
+                    p.className = "mt-4";
+                    biosText.appendChild(p);
+                    let progress = 0;
+                    const total = 2867;
+                    const interval = setInterval(() => {
+                        progress += Math.floor(Math.random() * 50) + 25;
+                        if (progress > total) progress = total;
+                        const percentage = Math.floor((progress / total) * 100);
+                        p.textContent = `Loading... (${progress}/${total}) ${percentage}%`;
+                        if (progress >= total) {
+                            clearInterval(interval);
+                            setTimeout(() => {
+                                biosScreen.style.opacity = '0';
+                                biosScreen.style.transition = 'opacity 1s ease-out';
+                                setTimeout(startTerminalInterface, 1000);
+                            }, 500);
+                        }
+                    }, 100);
+                }
+                displayNextLine();
+            }
+
+            // --- Terminal Sequence ---
+            function startTerminalInterface() {
+                biosScreen.style.display = 'none';
+                mainTerminal.classList.remove('hidden');
+                
+                let currentLine = document.createElement('p');
+                terminalContent.appendChild(currentLine);
+
+                typeWriter(currentLine, 'RAISA v3.1 Initialization complete. All systems nominal.', 50, () => {
+                     currentLine = document.createElement('p');
+                     terminalContent.appendChild(currentLine);
+                     typeWriter(currentLine, 'Verifying connection to SCiPNET Global... Secure link established.', 50, () => {
+                         currentLine = document.createElement('p');
+                         terminalContent.appendChild(currentLine);
+                         typeWriter(currentLine, 'WARNING: This terminal is under constant surveillance by RAISA.', 50, () => {
+                            currentLine = document.createElement('p');
+                             currentLine.className = "mt-4";
+                            terminalContent.appendChild(currentLine);
+                            typeWriter(currentLine, 'The Following file falls under RAISA Secure Database OMEGA', 50, () => {
+                                currentLine = document.createElement('p');
+                                terminalContent.appendChild(currentLine);
+                                typeWriter(currentLine, 'Site 45 Archives', 50, () => {
+                                    currentLine = document.createElement('p');
+                                    currentLine.textContent = 'Please select a network:';
+                                    terminalContent.appendChild(currentLine);
+                                    showNetworkOptions();
+                                });
+                            });
+                         });
+                     });
+                });
+            }
+            
+            function showErrorPopup(message) {
+                errorMessage.textContent = message;
+                errorPopup.classList.remove('hidden');
+                setTimeout(() => { errorPopup.classList.add('hidden'); }, 2000);
+            }
+
+            function triggerMemeticAgent() {
+                loginPopup.classList.add('hidden');
+                let currentLine = document.createElement('p');
+                terminalContent.appendChild(currentLine);
+
+                typeWriter(currentLine, 'Initializing Memetic Kill Agent...', 50, () => {
+                    const memeticAgent = document.getElementById('memetic-agent');
+                    memeticAgent.classList.remove('opacity-0');
+                    memeticAgent.style.pointerEvents = 'auto';
+
+                    setTimeout(() => {
+                        memeticAgent.classList.add('opacity-0');
+                        memeticAgent.style.pointerEvents = 'none';
+                        
+                        setTimeout(() => {
+                            currentLine = document.createElement('p');
+                            terminalContent.appendChild(currentLine);
+                            typeWriter(currentLine, 'Personnel vitals still detected. Access granted.', 50, showWelcome);
+                        }, 1000); 
+                    }, 4000); 
+                });
+            }
+
+            function showLoginPopup() {
+                loginPopup.classList.remove('hidden');
+                typeWriter(loginCode, '74ECHO-INDIGO-45-301', 150, triggerMemeticAgent);
+            }
+
+
+
+            function showNetworkOptions() {
+                const networks = { 'S45-GENUSE-LAN': false, 'S45-RESEARCH-SEC': false, 'ARCHIVE-ISOLATED': true, 'S45-GUEST': false };
+                const container = document.createElement('div');
+                container.className = 'flex flex-wrap gap-4 my-4';
+                
+                for (const net in networks) {
+                    const button = document.createElement('button');
+                    button.textContent = net;
+                    if (networks[net]) {
+                        button.className = 'bg-yellow-600 text-black px-4 py-2 interactive-button border-2 border-white';
+                        button.onclick = () => { container.remove(); showLoginPopup(); };
+                    } else {
+                        button.className = 'bg-gray-600 text-gray-400 px-4 py-2 interactive-button cursor-not-allowed';
+                        button.disabled = true;
+                        const wrapper = document.createElement('div');
+                        wrapper.style.display = 'inline-block';
+                        wrapper.onclick = () => showErrorPopup('Network Unavailable');
+                        wrapper.appendChild(button);
+                        container.appendChild(wrapper);
+                        continue;
+                    }
+                    container.appendChild(button);
+                }
+                terminalContent.appendChild(container);
+            }
+            
+            function showWelcome() {
+                let currentLine = document.createElement('p');
+                terminalContent.appendChild(currentLine);
+                typeWriter(currentLine, 'Welcome, ███████', 50, () => {
+                     currentLine = document.createElement('p');
+                     terminalContent.appendChild(currentLine);
+                     typeWriter(currentLine, 'Would you like to access the Personnel Files Archive for Site 45?', 50, showAccessOptions);
+                });
+            }
+
+            function showAccessOptions() {
+                 const container = document.createElement('div');
+                 container.className = 'flex gap-4 my-4';
+                 const yesButton = document.createElement('button');
+                 yesButton.textContent = 'Y';
+                 yesButton.className = 'text-green-500 border border-green-500 px-4 py-2 interactive-button hover:bg-green-500 hover:text-black';
+                 yesButton.onclick = showArchive;
+                 const noButton = document.createElement('button');
+                 noButton.textContent = 'N';
+                 noButton.className = 'text-red-500 border border-red-500 px-4 py-2 interactive-button hover:bg-red-500 hover:text-black';
+                 container.appendChild(yesButton);
+                 container.appendChild(noButton);
+                 terminalContent.appendChild(container);
+            }
+
+            function showArchive() {
+                terminalContent.style.display = 'none';
+                archiveScreen.classList.remove('hidden');
+            }
+
+            // --- Start the whole sequence ---
+            startRemoteAccessSequence();
+        });
+    </script>
+</body>
+</html>
+
